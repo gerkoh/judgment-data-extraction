@@ -9,3 +9,8 @@ flowchart LR
 flowchart LR
   A[Lambda function that operates daily] --> B[Judiciary website] --> C[Filter by family court cases] --> D[Access eLitigation] --> E[Scrape eLitigation using HTML tags] --> F[Save to S3]
 ```
+
+Directory structure
+.env - environment variables
+judgments/ - scraped judgments
+scraper/judgment_scraper.py - scraper

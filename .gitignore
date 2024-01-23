@@ -1,3 +1,9 @@
+# Data (do not commit judgments)
+judgments
+
+# MacOS hidden files
+.DS_Store
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
