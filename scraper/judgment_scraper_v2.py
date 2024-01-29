@@ -87,7 +87,7 @@ def extract_paragraphs(html_content, class_name):
     paragraphs = []
 
     # Find all paragraphs with the specified class
-    matching_paragraphs = soup.find_all('p', class_=class_name)
+    matching_paragraphs = soup.find_all(['p','div'], class_=class_name)
 
 
     for paragraph in matching_paragraphs:
