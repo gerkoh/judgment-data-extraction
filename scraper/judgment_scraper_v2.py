@@ -38,7 +38,7 @@ def extract_cases_from_page(url, output_directory, visited_urls=set()):
     except Exception as e:
         print(f"An error occurred: {str(e)}")
 
-#extract case name from html content
+# extract case name from html content
 def extract_case_name(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
     case_title_tag = soup.find('span', class_='caseTitle')
@@ -47,14 +47,13 @@ def extract_case_name(html_content):
         return case_title
     return ""
 
-#extract case citation from html content
-def extract_citation(html_content):
-    soup = BeautifulSoup(html_content, 'html.parser')
-    citation_tag = soup.find('span', class_='Citation offhyperlink')
-    if citation_tag:
-        citation = citation_tag.get_text(strip=True)
-        return citation
-    return ""
+#extract citation from url
+def extract_citation(url):
+    # Extract the case ID from the case URL
+    # Customize this function based on the actual URL structure
+    url_parts = url.split('/')
+    citation = url_parts[-1]
+    return citation
 
 #extract case_number,decision_date from html content
 def extract_case_info(html_content):
@@ -145,7 +144,7 @@ def extract_tables_in_order(html_content, table_classes):
     tables= []
 
     for tag in soup.find_all():
-        if any(table_tag in tag.get('class', []) for table_tag in table_tags):
+        if any(table_tag in tag.get('class', []) for table_tag in table_classes):
             tables.append(str(tag))
 
     return tables
@@ -156,7 +155,10 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
         if case_url in visited_urls:
             return
         visited_urls.add(case_url)
-
+        
+        #extract citation from url
+        citation = extract_citation(case_url)
+        
         # Send an HTTP GET request to the case URL
         response = requests.get(case_url)
 
@@ -170,8 +172,7 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
             
             #extract case name
             case_name = extract_case_name(html_content)
-            #extract citation
-            citation = extract_citation(html_content)
+            
             #extract case_number and decision date
             case_number,decision_date = extract_case_info(html_content)
             
@@ -201,7 +202,6 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
                 'paragraphs': paragraphs,
                 'tables' : tables,
                 #'heading to paragraph dictionary':
-                
                 'html_content': html_content,
                 # 'paragraph_texts': paragraph_texts
             }
@@ -223,15 +223,15 @@ def get_next_page_url(base_url, current_page, search_phrase):
     return f"{base_url}Index?Filter=SUPCT&YearOfDecision=All&SortBy=Score&SearchPhrase={search_phrase}&CurrentPage={current_page}&SortAscending=False&PageSize=0&Verbose=False&SearchQueryTime=0&SearchTotalHits=0&SearchMode=False&SpanMultiplePages=False"
 
 # Change the correct directory
-source_directory = 'judgments'  # Replace with the actual directory path
+output_directory = 'judgments'  # Replace with the actual directory path
 base_url = 'https://www.elitigation.sg/gd/Home/'  # Replace with the base URL
 search_phrase = '%22division%20of%20matrimonial%20assets%22'
 
 # Start crawling from page 1
 current_page = 1
-max_pages = 999  # Set the maximum number of pages to crawl (arbitrary number, can be 9999, crawler will stop at last page)
+max_pages = 1  # Set the maximum number of pages to crawl (arbitrary number, can be 9999, crawler will stop at last page)
 
 while current_page <= max_pages:
     current_url = get_next_page_url(base_url, current_page, search_phrase)
-    extract_cases_from_page(current_url, source_directory)
+    extract_cases_from_page(current_url, output_directory)
     current_page += 1
