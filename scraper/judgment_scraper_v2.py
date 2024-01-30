@@ -81,22 +81,74 @@ def extract_case_info(html_content):
     
     return '', ''
 
-def extract_paragraphs(html_content, class_name):
-    
+#extract paragraph classes
+def extract_paragraph_classes(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    paragraph_classes = set()
+    for tag in soup.find_all(class_=True):
+        for class_name in tag.get('class', []):
+            if any(prefix in class_name for prefix in ['Judg-1', 'Judg-2', 'Judg-3', 'Judge-Quote-']):
+                paragraph_classes.add(class_name)
+    return list(paragraph_classes)
+
+#extract paragraphs in order
+def extract_paragraphs_in_order(html_content, paragraph_classes):
     soup = BeautifulSoup(html_content, 'html.parser')
     paragraphs = []
 
-    # Find all paragraphs with the specified class
-    matching_paragraphs = soup.find_all(['p','div'], class_=class_name)
-
-
-    for paragraph in matching_paragraphs:
-        # Remove non-visible characters
-        cleaned_text = re.sub(r'\s+', ' ', paragraph.get_text(strip=True))
-        paragraphs.append(cleaned_text)
+    for tag in soup.find_all():
+        if any(paragraph_class in tag.get('class', []) for paragraph_class in paragraph_classes):
+            #clean text
+            paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
+            paragraphs.append(paragraph_text)
 
     return paragraphs
 
+#extract header classes
+def extract_header_classes(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    header_classes = set()
+
+    for tag in soup.find_all(class_=True):
+        for class_name in tag.get('class', []):
+            if 'Judg-Heading-' in class_name:
+                header_classes.add(class_name)
+
+    return list(header_classes)
+
+#extract headers in order
+def extract_headers_in_order(html_content, header_classes):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    headers = []
+
+    for tag in soup.find_all():
+        if any(header_class in tag.get('class', []) for header_class in header_classes):
+            header_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
+            headers.append(header_text)
+    return headers
+
+# extract table classes from <table> tags
+def extract_table_classes_from_tag(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    table_classes = set()
+    #searches for <table> tag and returns the class unique class names of the table
+    for tag in soup.find_all('table', class_=True):
+        class_names = tag.get('class', [])
+        if class_names:
+            table_classes.add(class_names[0])
+
+    return list(table_classes)
+
+#extract tables in order
+def extract_tables_in_order(html_content, table_classes):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    tables= []
+
+    for tag in soup.find_all():
+        if any(table_tag in tag.get('class', []) for table_tag in table_tags):
+            tables.append(str(tag))
+
+    return tables
 #convert cases to json file
 def case_to_json(case_url, output_directory, visited_urls=set()):
     try:
@@ -116,17 +168,25 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
             # Extract HTML content
             html_content = str(soup)
             
+            #extract case name
             case_name = extract_case_name(html_content)
+            #extract citation
             citation = extract_citation(html_content)
+            #extract case_number and decision date
             case_number,decision_date = extract_case_info(html_content)
             
-            class_name_to_extract = "Judg-1"
-            paragraphs = extract_paragraphs(html_content, class_name_to_extract)
-            #extract the para, heading and table
-
-            # Extract text content inside each paragraph
-            paragraph_texts = [paragraph.get_text(strip=True) for paragraph in soup.find_all('p')]
-
+            #extract_paragraphs in order
+            paragraph_classes = extract_paragraph_classes(html_content)
+            paragraphs = extract_paragraphs_in_order(html_content, paragraph_classes)
+            
+            #extract headers in order
+            header_classes =extract_header_classes(html_content)
+            headers = extract_headers_in_order(html_content, header_classes)
+            
+            #extracts tables in order
+            table_classes = extract_table_classes_from_tag(html_content)
+            tables = extract_tables_in_order(html_content, table_classes)
+            
             # Construct the full output file path for the case content
             case_output_file = os.path.join(output_directory, f'{citation}.json')
 
@@ -137,9 +197,11 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
                 'case_number': case_number,
                 'decision_date': decision_date,
                 'url': case_url,
+                'headers' : headers,
                 'paragraphs': paragraphs,
-                #headings = fill up,
-                #table = fill up
+                'tables' : tables,
+                #'heading to paragraph dictionary':
+                
                 'html_content': html_content,
                 # 'paragraph_texts': paragraph_texts
             }
