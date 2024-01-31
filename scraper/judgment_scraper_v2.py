@@ -148,6 +148,60 @@ def extract_tables_in_order(html_content, table_classes):
             tables.append(str(tag))
 
     return tables
+
+#extracts_everything in order, returns as a list of tuples. (e.g.)[('header',"content of header"),('paragraph'),('content of paragraph')]
+def extract_everything_in_order(html_content, header_classes, paragraph_classes,table_classes):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    result_list = []
+
+    for tag in soup.find_all():
+        if any(header_class in tag.get('class', []) for header_class in header_classes):
+            header_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
+            result_list.append(('header', header_text))
+        if any(paragraph_class in tag.get('class', []) for paragraph_class in paragraph_classes):
+            paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
+            result_list.append(('paragraph', paragraph_text))
+        
+        if any(table_tag in tag.get('class', []) for table_tag in table_classes):
+            result_list.append(('table',str(tag)))
+            
+    return result_list
+
+#convert the tuple from everything in order into an ordered dictionary header:paragraphs/table
+def convert_to_dictionary(tuple_list):
+    my_dict = {}
+
+    for i in tuple_list:
+      #if the dictionary is empty and first element is a paragraph/table, append paragraph to value of "preliminary" key
+        if not my_dict:
+            if i[0] in ['paragraph', 'table']:
+                my_dict['preliminary'] = [i[1]]
+                continue  
+            #if the dictionary is empty and first element is a header, append header name to key  
+            elif i[0] == 'header':
+                my_dict[i[1]] = []
+                continue  # Skip to the next iteration
+        else:
+            last_key, last_value = list(my_dict.items())[-1]
+            # if the last key in the dict is 'preliminary' and the following items in tuple are still paragraphs or table
+            if last_key == 'preliminary' and i[0] in ['paragraph', 'table']:
+                my_dict['preliminary'].append(i[1])
+                continue
+            # if the last key in the dict is a header and the following item is paragraph or table
+            if last_key != 'preliminary' and i[0] in ['paragraph', 'table']:
+                my_dict[last_key].append(i[1])
+                continue
+            #if the last key in the dict is a preliminary and the following item is  a header. the new header becomes the latest key
+            if last_key in ['preliminary'] and i[0] in ['header']:
+                my_dict[i[1]] = []
+                continue
+            #if the last key in the dict is a header and the following item is also a header. the new header becomes the latest key
+            if last_key not in ['preliminary'] and i[0] in ['header']:
+                my_dict[i[1]] = []
+                continue
+
+    return my_dict
+
 #convert cases to json file
 def case_to_json(case_url, output_directory, visited_urls=set()):
     try:
@@ -188,6 +242,12 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
             table_classes = extract_table_classes_from_tag(html_content)
             tables = extract_tables_in_order(html_content, table_classes)
             
+            #extract everything in order into a tuple_list
+            everything_tuplelist = extract_everything_in_order(html_content, header_classes, paragraph_classes,table_classes)
+            
+            #convert everything into ordered dictionary format by header:para/table
+            ordered_dictionary = convert_to_dictionary(everything_tuplelist)
+            
             # Construct the full output file path for the case content
             case_output_file = os.path.join(output_directory, f'{citation}.json')
 
@@ -201,14 +261,15 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
                 'headers' : headers,
                 'paragraphs': paragraphs,
                 'tables' : tables,
-                #'heading to paragraph dictionary':
-                'html_content': html_content,
-                # 'paragraph_texts': paragraph_texts
+                'ordered_dictionary': ordered_dictionary,
+                'html_content': html_content
             }
-
+            
+            
             # Write the dictionary as JSON to the output file
             with open(case_output_file, 'w', encoding='utf-8') as file:
                 json.dump(case_data, file, ensure_ascii=False, indent=2)
+                
 
             print(f"Content from case '{case_url}' extracted and saved to '{case_output_file}'")
 
