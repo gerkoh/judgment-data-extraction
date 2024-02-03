@@ -42,6 +42,8 @@ def extract_cases_from_page(url, output_directory, visited_urls=set()):
 def extract_case_name(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
     case_title_tag = soup.find('span', class_='caseTitle')
+    if not case_title_tag:
+        case_title_tag = soup.find('div', class_="HN-CaseName")
     if case_title_tag:
         case_title = ' '.join(case_title_tag.stripped_strings)
         return case_title
@@ -56,7 +58,7 @@ def extract_citation(url):
     return citation
 
 #extract case_number,decision_date from html content
-def extract_case_info(html_content):
+def extract_case_number(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
 
     case_info_table = soup.find('table', id='info-table')
@@ -74,12 +76,45 @@ def extract_case_info(html_content):
 
         # Extract Case Number and Decision Date
         case_number = case_info.get('Case Number', '')
+        return case_number
+    #if infor table not found, use tag and extract first index from it
+    case_number_tag = soup.find('div', class_='HN-Coram')
+    if case_number_tag:
+        first_element = case_number_tag.contents[0]
+        case_number = ' '.join(first_element.stripped_strings)
+        return case_number
+
+    return ""
+
+def extract_decision_date(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+
+    case_info_table = soup.find('table', id='info-table')
+    
+    if case_info_table:
+        case_info = {}
+        rows = case_info_table.find_all('tr', class_='info-row')
+        
+        for row in rows:
+            label = row.find('td', class_='txt-label')
+            value = row.find('td', class_='txt-body')
+            
+            if label and value:
+                case_info[label.get_text(strip=True)] = value.get_text(strip=True)
+
+        # Extract Case Number and Decision Date
+        
         decision_date = case_info.get('Decision Date', '')
         
-        return case_number, decision_date
+        return decision_date
+      
+    #if info table not found, try finding using tag
+    decision_date_tag = soup.find('div', class_='Judg-Date-Reserved')
+    if decision_date_tag:
+        decision_date = ' '.join(decision_date_tag.stripped_strings)
+        return decision_date
     
-    return '', ''
-
+    return ''
 #extract paragraph classes
 def extract_paragraph_classes(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -224,11 +259,12 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
             # Extract HTML content
             html_content = str(soup)
             
-            #extract case name
+    
             case_name = extract_case_name(html_content)
             
             #extract case_number and decision date
-            case_number,decision_date = extract_case_info(html_content)
+            case_number = extract_case_number(html_content)
+            decision_date = extract_decision_date(html_content)
             
             #extract_paragraphs in order
             paragraph_classes = extract_paragraph_classes(html_content)
