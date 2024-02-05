@@ -146,9 +146,11 @@ def extract_paragraphs_in_order(html_content, paragraph_classes):
             #clean text
             paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
             #remove numbering of para
-            while paragraph_text[0].isdigit():
+            while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
                 paragraph_text = paragraph_text[1:]
-            paragraphs.append(paragraph_text)
+            #ensure no empty paragraph strings are appended to the list
+            if len(paragraph_text)>0:
+                paragraphs.append(paragraph_text)
 
     return paragraphs
 
@@ -208,13 +210,34 @@ def extract_everything_in_order(html_content, header_classes, paragraph_classes,
             header_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
             result_list.append(('header', header_text))
         if any(paragraph_class in tag.get('class', []) for paragraph_class in paragraph_classes):
+            #clean para from html tag and remove the initial paragraph numbering
             paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
-            result_list.append(('paragraph', paragraph_text))
+            while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
+                paragraph_text = paragraph_text[1:]  
+            if len(paragraph_text)>0:
+                result_list.append(('paragraph', paragraph_text))
         
         if any(table_tag in tag.get('class', []) for table_tag in table_classes):
             result_list.append(('table',str(tag)))
             
     return result_list
+
+#extract paragraphs and table in order in an ordered list
+def extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, table_classes):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    result_list = []
+    for tag in soup.find_all():
+        if any(paragraph_class in tag.get('class', []) for paragraph_class in paragraph_classes):
+            #clean para from html tag and remove the initial paragraph numbering
+            paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
+            while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
+                paragraph_text = paragraph_text[1:] 
+            if len(paragraph_text)>0: 
+                result_list.append(paragraph_text)
+              
+        if any(table_tag in tag.get('class', []) for table_tag in table_classes):
+            result_list.append(str(tag))
+    return result_list    
 
 #convert the tuple from everything in order into an ordered dictionary header:paragraphs/table
 def convert_to_dictionary(tuple_list):
@@ -293,6 +316,9 @@ def case_to_json(case_url, output_directory):
             #convert everything into ordered dictionary format by header:para/table
             ordered_dictionary = convert_to_dictionary(everything_tuplelist)
             
+            #ordered list of paragraphs and tables
+            ordered_list_para_table = extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, table_classes)
+            
             # Construct the full output file path for the case content
             case_output_file = os.path.join(output_directory, f'{citation}.json')
             case_data = {
@@ -304,8 +330,8 @@ def case_to_json(case_url, output_directory):
                 'headers' : headers,
                 'paragraphs': paragraphs,
                 'tables' : tables,
-                'ordered_dictionary': ordered_dictionary,
-                'html_content': html_content
+                'ordered list': ordered_list_para_table,
+                'ordered_dictionary': ordered_dictionary
             }
             
             

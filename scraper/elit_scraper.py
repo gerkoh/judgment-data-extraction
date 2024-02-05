@@ -7,8 +7,13 @@ import re
 
 def is_valid_case_url(url):
     # Check if the URL is a case URL based on the pattern
-    return "elitigation.sg/gd/s/" in url
-
+    if "elitigation.sg/gd/s/" in url:
+        year_part =url.split('_')[-3]
+        year_part = year_part[len(year_part)-4:]
+        # Check if the year is 2007 or above
+        if year_part.isdigit() and int(year_part) >= 2007:
+            return True
+        
 def extract_cases_from_page(url, output_directory):
     try:
         # Send an HTTP GET request to the URL
@@ -141,9 +146,11 @@ def extract_paragraphs_in_order(html_content, paragraph_classes):
         if any(paragraph_class in tag.get('class', []) for paragraph_class in paragraph_classes):
             #clean text
             paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
-            while paragraph_text[0].isdigit():
+            while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
                 paragraph_text = paragraph_text[1:]
-            paragraphs.append(paragraph_text)
+            #ensure no empty paragraph strings are appended to the list
+            if len(paragraph_text)>0:
+                paragraphs.append(paragraph_text)
 
     return paragraphs
 
@@ -203,13 +210,36 @@ def extract_everything_in_order(html_content, header_classes, paragraph_classes,
             header_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
             result_list.append(('header', header_text))
         if any(paragraph_class in tag.get('class', []) for paragraph_class in paragraph_classes):
+            #clean para from html tag and remove the initial paragraph numbering
             paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
-            result_list.append(('paragraph', paragraph_text))
-        
+            while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
+                paragraph_text = paragraph_text[1:]  
+            #ensure no empty paragraph strings are appended to the list
+            if len(paragraph_text)>0:
+                result_list.append(('paragraph', paragraph_text))
+            
         if any(table_tag in tag.get('class', []) for table_tag in table_classes):
             result_list.append(('table',str(tag)))
             
     return result_list
+
+#extract paragraphs and table in order in an ordered list
+def extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, table_classes):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    result_list = []
+    for tag in soup.find_all():
+        if any(paragraph_class in tag.get('class', []) for paragraph_class in paragraph_classes):
+            #clean para from html tag and remove the initial paragraph numbering
+            paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
+            while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
+                paragraph_text = paragraph_text[1:] 
+            #ensure no empty paragraph strings are appended to the list
+            if len(paragraph_text)>0:
+                result_list.append(paragraph_text)
+              
+        if any(table_tag in tag.get('class', []) for table_tag in table_classes):
+            result_list.append(str(tag))
+    return result_list    
 
 #convert the tuple from everything in order into an ordered dictionary header:paragraphs/table
 def convert_to_dictionary(tuple_list):
@@ -262,7 +292,6 @@ def case_to_json(case_url, output_directory):
 
             # Extract HTML content
             html_content = str(soup)
-            
     
             case_name = extract_case_name(html_content)
             
@@ -288,6 +317,9 @@ def case_to_json(case_url, output_directory):
             #convert everything into ordered dictionary format by header:para/table
             ordered_dictionary = convert_to_dictionary(everything_tuplelist)
             
+            #ordered list of paragraphs and tables
+            ordered_list_para_table = extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, table_classes)
+            
             # Construct the full output file path for the case content
             case_output_file = os.path.join(output_directory, f'{citation}.json')
             case_data = {
@@ -299,11 +331,10 @@ def case_to_json(case_url, output_directory):
                 'headers' : headers,
                 'paragraphs': paragraphs,
                 'tables' : tables,
-                'ordered_dictionary': ordered_dictionary,
-                'html_content': html_content
+                'ordered list': ordered_list_para_table,
+                'ordered_dictionary': ordered_dictionary
             }
-            
-            
+             
             # Write the dictionary as JSON to the output file
             with open(case_output_file, 'w', encoding='utf-8') as file:
                 json.dump(case_data, file, ensure_ascii=False, indent=2)
@@ -328,7 +359,7 @@ search_phrase = '%22division%20of%20matrimonial%20assets%22'
 
 # Start crawling from page 1
 current_page = 1
-max_pages = 99  # Set the maximum number of pages to crawl (arbitrary number, can be 9999, crawler will stop at last page)
+max_pages =  99  # Set the maximum number of pages to crawl (arbitrary number, can be 9999, crawler will stop at last page)
 
 while current_page <= max_pages:
     current_url = get_next_page_url(base_url, current_page, search_phrase)
