@@ -9,13 +9,8 @@ def is_valid_case_url(url):
     # Check if the URL is a case URL based on the pattern
     return "elitigation.sg/gd/s/" in url
 
-def extract_cases_from_page(url, output_directory, visited_urls=set()):
+def extract_cases_from_page(url, output_directory):
     try:
-        # Check if the URL has already been visited to avoid duplicate scraping
-        if url in visited_urls:
-            return
-        visited_urls.add(url)
-
         # Send an HTTP GET request to the URL
         response = requests.get(url)
 
@@ -115,6 +110,7 @@ def extract_decision_date(html_content):
         return decision_date
     
     return ''
+
 #extract paragraph classes
 def extract_paragraph_classes(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -123,7 +119,17 @@ def extract_paragraph_classes(html_content):
         for class_name in tag.get('class', []):
             if any(prefix in class_name for prefix in ['Judg-1', 'Judg-2', 'Judg-3', 'Judge-Quote-']):
                 paragraph_classes.add(class_name)
-    return list(paragraph_classes)
+    paragraph_classes = list(paragraph_classes)
+    
+    #if a table tag is collected, we have to remove it from the class list, to ensure no stripped tables in paragraph classes
+    for tag in soup.find_all('table', class_=True):
+        class_names = tag.get('class', [])
+    for class_name in class_names:
+        if class_name in paragraph_classes:
+            print(f'true, class name is {class_name}')
+            paragraph_classes.remove(class_name)
+        
+    return paragraph_classes
 
 #extract paragraphs in order
 def extract_paragraphs_in_order(html_content, paragraph_classes):
@@ -238,13 +244,8 @@ def convert_to_dictionary(tuple_list):
     return my_dict
 
 #convert cases to json file
-def case_to_json(case_url, output_directory, visited_urls=set()):
+def case_to_json(case_url, output_directory):
     try:
-        # Check if the case URL has already been visited to avoid duplicate scraping
-        if case_url in visited_urls:
-            return
-        visited_urls.add(case_url)
-        
         #extract citation from url
         citation = extract_citation(case_url)
         
@@ -286,8 +287,6 @@ def case_to_json(case_url, output_directory, visited_urls=set()):
             
             # Construct the full output file path for the case content
             case_output_file = os.path.join(output_directory, f'{citation}.json')
-
-            # Create a dictionary with case information
             case_data = {
                 'case_name': case_name,
                 'citation': citation,
