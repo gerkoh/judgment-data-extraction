@@ -126,7 +126,6 @@ def extract_paragraph_classes(html_content):
         class_names = tag.get('class', [])
     for class_name in class_names:
         if class_name in paragraph_classes:
-            print(f'true, class name is {class_name}')
             paragraph_classes.remove(class_name)
         
     return paragraph_classes
@@ -325,7 +324,7 @@ search_phrase = '%22division%20of%20matrimonial%20assets%22'
 
 # Start crawling from page 1
 current_page = 1
-max_pages = 1  # Set the maximum number of pages to crawl (arbitrary number, can be 9999, crawler will stop at last page)
+max_pages = 99  # Set the maximum number of pages to crawl (arbitrary number, can be 9999, crawler will stop at last page)
 
 while current_page <= max_pages:
     current_url = get_next_page_url(base_url, current_page, search_phrase)
