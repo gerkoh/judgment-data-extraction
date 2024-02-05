@@ -122,11 +122,13 @@ def extract_paragraph_classes(html_content):
     paragraph_classes = list(paragraph_classes)
     
     #if a table tag is collected, we have to remove it from the class list, to ensure no stripped tables in paragraph classes
+    class_names = []
     for tag in soup.find_all('table', class_=True):
         class_names = tag.get('class', [])
-    for class_name in class_names:
-        if class_name in paragraph_classes:
-            paragraph_classes.remove(class_name)
+    if class_names:
+        for class_name in class_names:
+            if class_name in paragraph_classes:
+                paragraph_classes.remove(class_name)
         
     return paragraph_classes
 
