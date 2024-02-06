@@ -122,7 +122,7 @@ def extract_paragraph_classes(html_content):
     for tag in soup.find_all(class_=True):
         if tag.name == 'p':
             for class_name in tag.get('class', []):
-                if any(prefix in class_name for prefix in ['Judg-1', 'Judg-2', 'Judg-3', 'Judg-Quote']):
+                if any(prefix in class_name for prefix in ['Judg-1', 'Judg-2', 'Judg-3', 'Judg-Quote','Judge-Quote']):
                     paragraph_classes.add(class_name)
     paragraph_classes = list(paragraph_classes)
     
