@@ -15,9 +15,8 @@ for file_name in os.listdir("judgments/"):
         # If there is a bullet point, concatenate it to the previous paragraph
         while para_index < len(full_text):
             para = full_text[para_index]
-            if para.startswith("("):
-                index = full_text.index(para)
-                full_text[index-1] += para
+            if para.startswith("(") or para.endswith(":"):
+                full_text[para_index-1] += para
                 full_text.remove(para)
             else:
                 para_index += 1
