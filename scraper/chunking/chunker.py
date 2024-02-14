@@ -49,6 +49,10 @@ for file_name in os.listdir("modified_judgments/"):
         tables = dict()
         while full_text:
             if full_text[0].startswith("<table"):
+                # Scenario where chunk_temp contains text and a table is encountered. Append chunk_temp to chunks and reset chunk_temp.
+                if chunk_temp:
+                    chunks.append(chunk_temp + "<<table_no" + str(table_number) + ">>")
+                    chunk_temp = ""
                 tables["<<table_no" + str(table_number) + ">>"] = full_text.pop(0)
                 chunks.append("<<table_no" + str(table_number) + ">>")
                 table_number += 1
