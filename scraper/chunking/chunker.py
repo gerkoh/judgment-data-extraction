@@ -12,10 +12,13 @@ for file_name in os.listdir("judgments/"):
         full_text = json_file.get("ordered list", [])
         
         para_index = 0
-        # If there is a bullet point, concatenate it to the previous paragraph
+
         while para_index < len(full_text):
-            para = full_text[para_index]
-            if para.startswith("(") or para.endswith(":"):
+            para = full_text[para_index]            
+            if para.startswith("<table"):
+                para_index += 1
+            # If the paragraph starts with a bullet point, it likely belongs to the previous paragraph
+            elif para.startswith("(") and not full_text[para_index-1].startswith("<table"):
                 full_text[para_index-1] += para
                 full_text.remove(para)
             else:
