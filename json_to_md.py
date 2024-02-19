@@ -31,9 +31,9 @@ def convert_to_md(ordered_list):
             md_output += string + "\n\n"
     return md_output
 
-
-
 folder_path = 'xyz'
+new_folder_path = 'abc'
+
 # Iterate through all files in the folder
 for filename in os.listdir(folder_path):
     if filename.endswith('.json'):
@@ -41,11 +41,11 @@ for filename in os.listdir(folder_path):
         ordered_list = extract_ordered_list(json_file_path)
         # Convert the list of strings to Markdown
         md_result = convert_to_md(ordered_list)
-
-        output_file_path = 'output_path'
+        
+        # Define the output file path in the new folder
+        output_file_path = os.path.join(new_folder_path, filename.replace('.json', '.md'))
+        # Write the Markdown output to a file in the new folder
         with open(output_file_path, 'w') as file:
-            json.dump({'markdown': md_result}, file)
-        print("Markdown output has been written to:", output_file_path)
+            file.write(md_result)
 
         # print(md_result)
-
