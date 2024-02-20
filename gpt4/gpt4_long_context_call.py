@@ -43,9 +43,10 @@ def gpt4_api_call(judgment_full_text):
                 }
             ]
         )
+    tokens = completion.usage.total_tokens
     response = completion.choices[0].message.content
     # response = json.loads(response)
-    return response
+    return response, tokens
 
 def append_to_md_judgment(item, file_path):
     with open(file_path, 'r', encoding="utf-8") as file:
@@ -60,20 +61,19 @@ folder_path = 'md_judgments/'
 
 for file_name in os.listdir(folder_path):
     # Keeps track of time for each file for comparison
-    startTime = time.time()
-    print("Processing file:", file_name)
-    
-    json_file_path = os.path.join(folder_path, file_name)
-    full_text = read_md_judgment(json_file_path)
-    gpt_response = gpt4_api_call(full_text)
-    append_to_md_judgment(gpt_response, json_file_path)
-    print("Completed file:", file_name)
-    
-    endTime = time.time()
-    elapsedTime = endTime - startTime
-    
-    with open("time_log.csv", "a", newline='') as file:
-        writer = csv.writer(file)
-        writer.writerow([file_name, elapsedTime])
-    
-    time.sleep(60) # 3 RPM, to avoid rate limit
+    if file_name.endswith('.json'):
+        startTime = time.time()
+        print("Processing file:", file_name)
+        
+        json_file_path = os.path.join(folder_path, file_name)
+        full_text = read_md_judgment(json_file_path)
+        gpt_response = gpt4_api_call(full_text)
+        append_to_md_judgment(gpt_response[0], json_file_path)
+        print("Completed file:", file_name)
+        
+        endTime = time.time()
+        elapsedTime = endTime - startTime
+        
+        with open("logs.csv", "a", newline='') as file:
+            writer = csv.writer(file)
+            writer.writerow([file_name, elapsedTime, gpt_response[1]])
