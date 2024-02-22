@@ -28,17 +28,19 @@ def gpt4_api_call(judgment_full_text):
                     Judgment data:\n
                     ```{judgment_full_text}```
                     \n\n
-                    Extract data according to the fixed headers given. Follow the output format strictly.\n
-                    Length of marriage till IJ (include separation period): <extracted data>
-                    Length of marriage (exclude separation period): <extracted data>
-                    Number of children: NA;Wife's income (monthly): <extracted data>
-                    Husband's income (monthly): <extracted data>
-                    Single or dual income marriage: <extracted data>
-                    Direct contribution (Wife): <extracted data>
-                    Indirect contribution (Wife): <extracted data>
-                    Average ratio (Wife): <extracted data>
-                    Final ratio (post-adjustments): <extracted data>
-                    Adjustments were for: <extracted data>
+                    Extract data from the judgment according to the fixed headers given. Follow the output format strictly.\n
+                    Length of marriage till Interim Judgment for divorce (including separation period): <if judgment contains the information, then provide the extracted data as an integer. Otherwise, 'Undisclosed'.>\n
+                    Length of marriage (exclude separation period): <if judgment contains the information, then provide the extracted data as an integer. Otherwise, 'Undisclosed'.\n
+                    Number of children: <extracted data, an integer>\n
+                    Wife's income (monthly): <extracted data, an integer>\n
+                    Husband's income (monthly): <extracted data, an integer>\n
+                    Single or dual income marriage: <extracted data, 'Undisclosed', 'dual' or 'single'>\n
+                    Direct contribution (Wife): <extracted data, in percentage>\n
+                    Indirect contribution (Wife): <extracted data, in percentage>\n
+                    Average ratio (Wife): <if judgment contains the information, then provide the extracted data as an integer. Otherwise, calculate as (direct + indirect contribution)/2, in percentage>\n
+                    Final ratio (post-adjustments): <extracted data>\n
+                    Adjustments: <(final ratio - average ratio), as integer>\n
+                    Adjustments were for: <extracted data, reasons given from the judgment>
                     """
                 }
             ]
