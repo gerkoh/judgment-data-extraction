@@ -72,20 +72,38 @@ def get_cases_from_url_page(url):
     return ls_cases
 
 def lambda_handler(event, context):
-    # Get the latest casename in CSV
+    """
+    Get latest casename in CSV
+    Get the latest casename from url
+    If the latest case in CSV is the same as the latest case from url, there are no new cases, end the process.
+    Else, if the latest casename in CSV is not the same as the latest casename from url, there are new cases to scrape.
+        Get cases to scrape
+        Use scraper to get json
+        Upload json
+        Run GPT code
+    """
+    page = 1
+    url = f"https://www.elitigation.sg/gd/Home/Index?filter=SUPCT&yearOfDecision=All&sortBy=DateOfDecision&currentPage={page}&sortAscending=False&searchPhrase=%22division%20of%20matrimonial%20assets%22&verbose=False"
+    
     latest_casename_csv = get_latest_case_in_csv()
 
-    # Get the latest casename from url
-    latest_casename_url = get_latest_case_from_url(url="https://www.elitigation.sg/gd/Home/Index?filter=SUPCT&yearOfDecision=All&sortBy=Score&currentPage=1&sortAscending=False&searchPhrase=%22division%20of%20matrimonial%20assets%22&verbose=False")
+    latest_casename_url = get_latest_case_from_url(url=url)
     
-    # If the latest case in CSV is the same as the latest case from url, there are no new cases
     if latest_casename_csv == latest_casename_url:
         message = 'There are no new judgments.'
         logger.info(message)
 
-    # If the latest casename in CSV is not the same as the latest casename from url, there are new cases to scrape
     else:
         #! TODO: Check how many new cases there are
         #! TODO: For each new case, check in CSV if the case has been processed (comparing citations)
             #! TODO: If the case has not been processed, scrape the case and upload to S3
             #! TODO: Elif case has been processed previously, add the citation to previous citations column
+        cases_on_page1 = get_cases_from_url_page(url=url)
+        cases_to_scrape = []
+        for case in cases_on_page1:
+            if case == latest_casename_csv:
+                break
+            cases_to_scrape.append(case)
+        
+        for case in cases_to_scrape: # run scraper on list of cases to scrape
+            
