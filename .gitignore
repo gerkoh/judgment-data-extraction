@@ -1,5 +1,6 @@
 # Data (do not commit judgments)
 judgments
+md_judgments
 
 # MacOS hidden files
 .DS_Store
