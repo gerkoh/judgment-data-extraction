@@ -5,7 +5,7 @@ import logging
 import csv
 import os
 from bs4 import BeautifulSoup
-from datetime import datetime
+from datetime import date
 from urllib.parse import urljoin
 import re
 
@@ -15,20 +15,19 @@ sns = boto3.client('sns')
 
 S3_BUCKET = os.environ.get('JUDGMENT_SCRAPER_S3_BUCKET')
 JUDGMENT_CSV = os.environ.get('JUDGMENT_CSV')
+SNS_ARN = os.environ.get('SNS_ARN')
 
-# Create a logging object
 logger = logging.getLogger()
+today = date.today()
+log_subject = 'Upload Notification for ' + str(today)
 
 # Set the log level to .INFO, so only messages with level .INFO or higher will be logged. Toggle DEBUG for debugging.
 logger.setLevel(logging.INFO)
 # logger.setLevel(logging.DEBUG)
 
 """
-Lambda function runs every __ days to check for new judgments on the eLitigation website.
-If there are new judgments,
-    i. the function will scrape the judgment and upload it to the S3 bucket;
-    ii. which will invoke the DSPy pipeline to process the judgment and update the CSV file,
-    iii. which is subsequently re-uploaded to the S3 bucket.
+Lambda function runs every day to check for new judgments on the eLitigation website.
+If there are new judgments, the function will scrape the judgment and upload it to the S3 bucket
 """
 
 def get_latest_case_citation_from_csv():
@@ -169,7 +168,7 @@ def extract_decision_date(html_content):
         decision_date = case_info.get('Decision Date', '')
         
         return decision_date
-      
+
     #if info table not found, try finding using tag
     decision_date_tag = soup.find('div', class_='Judg-Date-Reserved')
     if decision_date_tag:
@@ -184,7 +183,7 @@ def extract_paragraph_classes(html_content):
     paragraph_classes = set()
     for tag in soup.find_all(class_=True):
         for class_name in tag.get('class', []):
-            if any(prefix in class_name for prefix in ['Judg-1', 'Judg-2', 'Judg-3', 'Judge-Quote-','Judg-Quote']):
+            if any(prefix in class_name for prefix in ['Judg-1', 'Judg-2', 'Judg-3', 'Judge-Quote-','Judg-Quote','Judg-List']):
                 paragraph_classes.add(class_name)
     paragraph_classes = list(paragraph_classes)
     
@@ -339,7 +338,7 @@ def convert_to_dictionary(tuple_list):
     return my_dict
 
 #convert cases to json file
-def case_to_json(case_url, output_directory):
+def case_to_json(case_url):
     try:
         #extract citation from url
         citation = extract_citation(case_url)
@@ -383,7 +382,6 @@ def case_to_json(case_url, output_directory):
             ordered_list_para_table = extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, table_classes)
             
             # Construct the full output file path for the case content
-            case_output_file = os.path.join(output_directory, f'{citation}.json')
             case_data = {
                 'case_name': case_name,
                 'citation': citation,
@@ -396,30 +394,47 @@ def case_to_json(case_url, output_directory):
                 'ordered list': ordered_list_para_table,
                 'ordered_dictionary': ordered_dictionary
             }
-             
-            # Write the dictionary as JSON to the output file
-            with open(case_output_file, 'w', encoding='utf-8') as file:
-                json.dump(case_data, file, ensure_ascii=False, indent=2)
-                
-
-            print(f"Content from case '{case_url}' extracted and saved to '{case_output_file}'")
+            
+            data = json.dumps(case_data, ensure_ascii=False, indent=2)
+            
+            s3.put_object(Bucket=S3_BUCKET, Key=f'judgments/{citation}.json', Body=data)
+            
+            # Success message
+            log_msg = f"Content from case '{citation}' extracted and saved to 'judgments/{citation}'."
+            
+            sns.publish(
+                TopicArn=SNS_ARN,
+                Message=log_msg,
+                Subject=log_subject
+            )
 
         else:
-            print(f"Failed to fetch the case page '{case_url}'. Status code: {response.status_code}")
+            log_msg = f"Failed to fetch the case '{citation}'. Status code: {response.status_code}."
+            
+            sns.publish(
+                TopicArn=SNS_ARN,
+                Message=log_msg,
+                Subject=log_subject
+            )
 
     except Exception as e:
-        print(f"An error occurred: {str(e)}")
+        log_msg = f"An error occurred: {str(e)} while converting {citation} to json format."
+        sns.publish(
+                TopicArn=SNS_ARN,
+                Message=log_msg,
+                Subject=log_subject
+            )
 
 def lambda_handler(event, context):
     """
+    Logic:
     Get latest casename in CSV
     Get the latest casename from url
     If the latest case in CSV is the same as the latest case from url, there are no new cases, end the process.
-    Else, if the latest casename in CSV is not the same as the latest casename from url, there are new cases to scrape.
-        Get cases to scrape
-        Use scraper to get json
-        Upload json
-        Run GPT code
+    Else, there are new cases to scrape.
+        - Get cases to scrape
+        - Use scraper to get the judgment in json format
+        - Upload json to S3 bucket
     """
     page = 1
     url = f"https://www.elitigation.sg/gd/Home/Index?filter=SUPCT&yearOfDecision=All&sortBy=DateOfDecision&currentPage={page}&sortAscending=False&searchPhrase=%22division%20of%20matrimonial%20assets%22&verbose=False"
@@ -437,14 +452,8 @@ def lambda_handler(event, context):
         print("There are no new judgments")
 
     else:
-        #! TODO: Check how many new cases there are
-        #! TODO: For each new case, check in CSV if the case has been processed (comparing citations)
-            #! TODO: If the case has not been processed, scrape the case and upload to S3
-            #! TODO: Elif case has been processed previously, add the citation to previous citations column
-            
-        
-        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv=latest_case_citation_from_csv)
+        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv="2024_SGHCF_10")
 
-        #! 2 options: immediately convert to full text and run GPT pipeline / write to S3 bucket and use new lambda function
-        for judgment_url in judgment_urls_to_scrape: # run scraper on list of cases to scrape
-            json_data = case_to_json(judgment_url, "scraped_data_from_aws/")
+        # Write new judgments to S3 bucket and use new lambda function to process the judgment
+        for judgment_url in judgment_urls_to_scrape:
+            case_to_json(judgment_url)
