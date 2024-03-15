@@ -4,14 +4,21 @@ import json
 import os
 from urllib.parse import urljoin
 import re
+import openai
+from dotenv import load_dotenv
+#loads env for openai LLM
+load_dotenv()
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+client = openai.OpenAI()
+client.api_key = OPENAI_API_KEY
 
 def is_valid_case_url(url):
     # Check if the URL is a case URL based on the pattern
     if "elitigation.sg/gd/s/" in url:
         year_part =url.split('_')[-3]
         year_part = year_part[len(year_part)-4:]
-        # Check if the year is 2007 or above
-        if year_part.isdigit() and int(year_part) >= 2007:
+        # Check if the year is 20015 or above
+        if year_part.isdigit() and int(year_part) >= 2015:
             return True
         
 def extract_cases_from_page(url, output_directory):
@@ -276,11 +283,59 @@ def convert_to_dictionary(tuple_list):
 
     return my_dict
 
+#call gpt-3.5-turbo to extract if the case is an appeal case or not   
+def gpt_api_call(full_text):
+    completion = client.chat.completions.create(
+            model="gpt-3.5-turbo-0125",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant designed to output JSON. Take the judgment data and extract the required information from it."},
+                {"role": "user", "content": 
+                    f"""
+                    Judgment data:\n
+                    ```{full_text}```
+                    \n\n
+                    Extract data to determine if the judgment is an appeal from a first instance case. Follow the output format strictly.\n
+                    Appeal Case: <if judgment is an appeal case, then input yes, otherwise no>
+                    """
+                }
+            ]
+        )
+    # tokens = completion.usage.total_tokens
+    response = completion.choices[0].message.content
+    # response = json.loads(response)
+    return response
+
+def flip_case_name_abbreviate(input_string):
+    # Find the index of 'v'
+    v_index = input_string.find('v')
+
+    if v_index != -1:
+        # Extract the 3 characters before 'v'
+        left_side = input_string[max(0, v_index - 4):v_index]
+        
+        # Extract the 3 characters after 'v'
+        right_side = input_string[v_index + 2:v_index + 5]
+        
+        # Construct the flipped string
+        flipped_case_name = right_side + ' v ' + left_side
+        return flipped_case_name
+    else:
+        # If 'v' is not found, return the original string
+        return input_string
+
+def case_name_abbreviate(input_string):
+     v_index = input_string.find('v')
+     if v_index != -1:
+        case_name = input_string[max(0, v_index - 4):v_index + 5]
+        return case_name
+
 #convert cases to json file
 def case_to_json(case_url, output_directory):
     try:
         #extract citation from url
         citation = extract_citation(case_url)
+        citation_year = int(citation[:4])
         
         # Send an HTTP GET request to the case URL
         response = requests.get(case_url)
@@ -294,6 +349,8 @@ def case_to_json(case_url, output_directory):
             html_content = str(soup)
     
             case_name = extract_case_name(html_content)
+            case_name_around_v = case_name_abbreviate(case_name)
+            flip_case_name_around_v = flip_case_name_abbreviate(case_name)
             
             #extract case_number and decision date
             case_number = extract_case_number(html_content)
@@ -318,12 +375,24 @@ def case_to_json(case_url, output_directory):
             ordered_dictionary = convert_to_dictionary(everything_tuplelist)
             
             #ordered list of paragraphs and tables
-            ordered_list_para_table = extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, table_classes)
-            
+            ordered_list_para_table = extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, table_classes) 
+           
+            #extract the first paragraph from the judgment and see if it is an appeal case. format is a json.obj with yes/no value
+            first_paragraphs = paragraphs[:5]
+            first_paragrarphs_string = " ".join(first_paragraphs)
+            response = gpt_api_call(first_paragrarphs_string)
+            data = json.loads(response)
+            appeal_case_value = data["Appeal Case"]
+            prior_case_name = 'undefined'
+            prior_case_citation = 'undefined'
+                
             # Construct the full output file path for the case content
             case_output_file = os.path.join(output_directory, f'{citation}.json')
             case_data = {
                 'case_name': case_name,
+                'appeal_case':appeal_case_value,
+                'prior_case_name': prior_case_name,
+                'prior_case_citation': prior_case_citation,
                 'citation': citation,
                 'case_number': case_number,
                 'decision_date': decision_date,
@@ -359,7 +428,7 @@ search_phrase = '%22division%20of%20matrimonial%20assets%22'
 
 # Start crawling from page 1
 current_page = 1
-max_pages =  99  # Set the maximum number of pages to crawl (arbitrary number, can be 9999, crawler will stop at last page)
+max_pages = 2  # Set the maximum number of pages to crawl (arbitrary number, can be 9999, crawler will stop at last page)
 
 while current_page <= max_pages:
     current_url = get_next_page_url(base_url, current_page, search_phrase)
