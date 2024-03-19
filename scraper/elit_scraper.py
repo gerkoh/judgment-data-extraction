@@ -349,8 +349,6 @@ def case_to_json(case_url, output_directory):
             html_content = str(soup)
     
             case_name = extract_case_name(html_content)
-            case_name_around_v = case_name_abbreviate(case_name)
-            flip_case_name_around_v = flip_case_name_abbreviate(case_name)
             
             #extract case_number and decision date
             case_number = extract_case_number(html_content)
@@ -383,16 +381,13 @@ def case_to_json(case_url, output_directory):
             response = gpt_api_call(first_paragrarphs_string)
             data = json.loads(response)
             appeal_case_value = data["Appeal Case"]
-            prior_case_name = 'undefined'
-            prior_case_citation = 'undefined'
+            
                 
             # Construct the full output file path for the case content
             case_output_file = os.path.join(output_directory, f'{citation}.json')
             case_data = {
                 'case_name': case_name,
                 'appeal_case':appeal_case_value,
-                'prior_case_name': prior_case_name,
-                'prior_case_citation': prior_case_citation,
                 'citation': citation,
                 'case_number': case_number,
                 'decision_date': decision_date,
