@@ -1,11 +1,11 @@
 import requests
 import boto3
-import logging
+# import logging
 from bs4 import BeautifulSoup
 from datetime import date
 from urllib.parse import urljoin
 import pandas as pd
-import openai
+from openai import OpenAI
 
 from io import StringIO
 import re
@@ -15,9 +15,12 @@ import os
 
 """
 todo on aws lambda function:
+- runtime must be python 3.9
 - increase timeout
 - add AWS layer to lambda function - pandas
-- add layer for tabulate (required) - arn:aws:lambda:ap-southeast-1:770693421928:layer:Klayers-p312-arm64-tabulate:1
+- add openai layer https://medium.com/@aalc928/2024-guide-to-deploying-openai-in-aws-lambda-the-essential-checklist-f58cd24e0c36
+    - pip install openai -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
+    - zip -r tabulate-package.zip python
 - increase max memory to 512GB
 - set environment variables in aws config
 - check permissions given to function
@@ -31,18 +34,56 @@ S3_BUCKET = os.environ.get('JUDGMENT_SCRAPER_S3_BUCKET')
 JUDGMENT_CSV = os.environ.get('JUDGMENT_CSV')
 SNS_ARN = os.environ.get('SNS_ARN')
 
-logger = logging.getLogger()
+# logger = logging.getLogger()
 today = date.today()
 log_subject = 'Upload Notification for ' + str(today)
 
 # Set the log level to .INFO, so only messages with level .INFO or higher will be logged. Toggle DEBUG for debugging.
-logger.setLevel(logging.INFO)
+# logger.setLevel(logging.INFO)
 # logger.setLevel(logging.DEBUG)
 
 """
 Lambda function runs every day to check for new judgments on the eLitigation website.
 If there are new judgments, the function will scrape the judgment and upload it to the S3 bucket.
 """
+
+OPENAI_API_KEY = os.environ.get("OPENAI_API_KEY")
+
+client = OpenAI()
+client.api_key = OPENAI_API_KEY
+
+def gpt4_api_call(judgment_full_text):
+    completion = client.chat.completions.create(
+            # model="gpt-4-turbo-preview",
+            model="gpt-3.5-turbo-0125",
+            response_format={"type": "json_object"},
+            messages=[
+                {"role": "system", "content": "You are a helpful assistant designed to output JSON. Take the judgment data and extract the required information from it."},
+                {"role": "user", "content": 
+                    f"""
+                    Judgment data:\n
+                    ```{judgment_full_text}```
+                    \n\n
+                    Extract data from the judgment according to the fixed headers given. Follow the output format strictly.\n
+                    Length of marriage till Interim Judgment for divorce (including separation period): <if judgment contains the information, then provide the extracted data as an integer. Otherwise, 'Undisclosed'.>\n
+                    Length of marriage (exclude separation period): <if judgment contains the information, then provide the extracted data as an integer. Otherwise, 'Undisclosed'.\n
+                    Number of children: <extracted data, an integer>\n
+                    Wife's income (monthly): <extracted data, an integer>\n
+                    Husband's income (monthly): <extracted data, an integer>\n
+                    Single or dual income marriage: <extracted data, 'Undisclosed', 'dual' or 'single'>\n
+                    Direct contribution (Wife): <extracted data, in percentage>\n
+                    Indirect contribution (Wife): <extracted data, in percentage>\n
+                    Average ratio (Wife): <if judgment contains the information, then provide the extracted data as an integer. Otherwise, calculate as (direct + indirect contribution)/2, in percentage>\n
+                    Final ratio (post-adjustments): <extracted data>\n
+                    Adjustments: <(final ratio - average ratio), as integer>\n
+                    Adjustments were for: <extracted data, reasons given from the judgment>
+                    """
+                }
+            ]
+        )
+    response = completion.choices[0].message.content
+    
+    return response
 
 def get_latest_case_citation_from_csv():
     # Get the CSV file from the S3 bucket
@@ -331,7 +372,7 @@ def convert_to_md(ordered_list):
         else:
             md_output += string + "\n\n"
     md_output = str(md_output)
-    return md_output
+    return md_output.encode('utf-8')
 
 #convert cases to json file
 def case_to_json(case_url):
@@ -377,7 +418,7 @@ def case_to_json(case_url):
             #ordered list of paragraphs and tables
             ordered_list_para_table = extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, table_classes)
             
-            full_text = convert_to_md(ordered_list_para_table)
+            full_text = convert_to_md(ordered_list_para_table).decode('utf-8')
             
             # Construct the full output file path for the case content
             case_data = {
@@ -399,7 +440,25 @@ def case_to_json(case_url):
             s3.put_object(Bucket=S3_BUCKET, Key=f'judgments/{citation}.json', Body=data)
             
             # Success message
-            log_msg = f"Content from case '{citation}' extracted and saved to 'judgments/{citation}'."
+            log_msg = f"Content from case '{citation}' extracted and saved to 'judgments/{citation}'.\n"
+            
+            gpt_response = json.loads(gpt4_api_call(full_text))
+            gpt_response_list = list(gpt_response.values())
+            to_insert = [case_name, citation, decision_date] + gpt_response_list
+            
+            csv_response = s3.get_object(Bucket=S3_BUCKET, Key=JUDGMENT_CSV)
+            csv_response_status = csv_response.get("ResponseMetadata", {}).get("HTTPStatusCode")
+            
+            if csv_response_status == 200:
+                csv_data = pd.read_csv(csv_response.get("Body"))
+                missing_values_count = len(csv_data.columns) - len(to_insert)
+                new_data_extended = to_insert + [""] * missing_values_count
+                new_df = pd.DataFrame([new_data_extended], columns=csv_data.columns)
+                csv_data = pd.concat([csv_data, new_df], ignore_index=True)
+                s3.put_object(Bucket=S3_BUCKET, Key=JUDGMENT_CSV, Body=csv_data.to_csv(encoding='utf-8'))
+                log_msg += "Successfully updated the CSV file with the extracted information."
+            else:
+                log_msg += f"Failed to update the CSV file with the extracted information, error: {csv_response_status}."
             
             sns.publish(
                 TopicArn=SNS_ARN,
@@ -417,7 +476,7 @@ def case_to_json(case_url):
             )
 
     except Exception as e:
-        log_msg = f"An error occurred: {str(e)} while converting {citation} to json format."
+        log_msg = f"{citation}\nAn error occurred: {str(e)}."
         sns.publish(
                 TopicArn=SNS_ARN,
                 Message=log_msg,
