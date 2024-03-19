@@ -5,7 +5,6 @@ import os
 from urllib.parse import urljoin
 import re
 
-
 def is_valid_case_url(url):
     # Check if the URL is a case URL based on the pattern
     return "elitigation.sg/gd/s/" in url
@@ -235,37 +234,6 @@ def convert_to_dictionary(tuple_list):
 
     return my_dict
 
-#call gpt-3.5-turbo to extract if the case is an appeal case or not   
-def gpt_api_call(full_text):
-    import openai
-    from dotenv import load_dotenv
-    #loads env for openai LLM
-    load_dotenv()
-    OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-    client = openai.OpenAI()
-    client.api_key = OPENAI_API_KEY
-    
-    completion = client.chat.completions.create(
-            model="gpt-3.5-turbo-0125",
-            response_format={"type": "json_object"},
-            messages=[
-                {"role": "system", "content": "You are a helpful assistant designed to output JSON. Take the judgment data and extract the required information from it."},
-                {"role": "user", "content": 
-                    f"""
-                    Judgment data:\n
-                    ```{full_text}```
-                    \n\n
-                    Extract data to determine if the judgment is an appeal from a first instance case. Follow the output format strictly.\n
-                    Appeal Case: <if judgment is an appeal case, then input yes, otherwise no>
-                    """
-                }
-            ]
-        )
-    # tokens = completion.usage.total_tokens
-    response = completion.choices[0].message.content
-    # response = json.loads(response)
-    return response
-
 #convert cases to json file
 def case_to_json(case_url):
     try:
@@ -309,18 +277,10 @@ def case_to_json(case_url):
             ordered_dictionary = convert_to_dictionary(everything_tuplelist)
             
             # Construct the full output file path for the case content
-            #extract the first paragraph from the judgment and see if it is an appeal case. format is a json.obj with yes/no value
-            first_paragraphs = paragraphs[:5]
-            first_paragrarphs_string = " ".join(first_paragraphs)
-            response = gpt_api_call(first_paragrarphs_string)
-            data = json.loads(response)
-            appeal_case_value = data["Appeal Case"]
-            
             # case_output_file = os.path.join(output_directory, f'{citation}.json')
             
             case_data = {
                 'case_name': case_name,
-                'appeal_case':appeal_case_value,
                 'citation': citation,
                 'case_number': case_number,
                 'decision_date': decision_date,
