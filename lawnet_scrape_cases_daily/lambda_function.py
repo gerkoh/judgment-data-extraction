@@ -99,31 +99,56 @@ def get_latest_case_citation_from_csv():
 
     return formatted_citation
 
-def get_latest_case_citation_from_url(soup):
-    # Get the latest case from url
-    for a_tag in soup.find_all('a', href=True):
-        if a_tag['href'].startswith('/gd/s/'):
-            casename = a_tag.text.strip()
+def get_latest_case_from_lawnet(soup):
+    for link in soup.find_all('a', href=True):
+        # find <a> tag with href starting with 'javascript:viewContent('
+        if link['href'].startswith("javascript:viewContent('"):
+            citation_and_casename = link.text
             break
-    return casename
+    formatted_citation = citation_and_casename.split(" - ")[1].strip().replace(" ", "_").replace("[","").replace("]","")
+    return formatted_citation
 
 def is_valid_case_url(url):
     # Check if the URL is a case URL based on the pattern
-    return "elitigation.sg/gd/s/" in url
+    return "https://www.lawnet.sg/lawnet/web/lawnet/free-resources?p_p_id=freeresources_WAR_lawnet3baseportlet&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_pos=2&p_p_col_count=3&_freeresources_WAR_lawnet3baseportlet_action=openContentPage&_freeresources_WAR_lawnet3baseportlet_docId=" in url
 
-def get_judgment_urls_to_scrape(url, soup, latest_case_citation_from_csv):
-    all_urls_on_page = []
-    for link in soup.find_all('a', href=True):
-        formatted_link = urljoin(url, link['href'])
-        if is_valid_case_url(formatted_link):
-            all_urls_on_page.append(formatted_link)
-    
-    urls_to_scrape = []
-    for link in all_urls_on_page:
-        if latest_case_citation_from_csv in link:
-            break
-        urls_to_scrape.append(link)
-    return urls_to_scrape
+def extract_cases_from_page(url, output_directory):
+    try:
+        # Send an HTTP GET request to the URL
+        response = requests.get(url)
+
+        # Check if the request was successful (status code 200)
+        if response.status_code == 200:
+            # Parse the HTML content of the page using BeautifulSoup
+            soup = BeautifulSoup(response.text, 'html.parser')
+            
+            # Find all links on the page
+            for link in soup.find_all('a', href=True):
+                next_url_suffix = urljoin(url, link['href'])
+                #takes '/Judgment/30964-SSP.xml' from javascript:viewContent('/Judgment/30964-SSP.xml')
+                match = re.search(r"'/([^']+)'", next_url_suffix)
+                if match:
+                    extracted_content = match.group(1)
+                # Check if the link is a valid case URL
+                    next_url = f"https://www.lawnet.sg/lawnet/web/lawnet/free-resources?p_p_id=freeresources_WAR_lawnet3baseportlet&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_pos=2&p_p_col_count=3&_freeresources_WAR_lawnet3baseportlet_action=openContentPage&_freeresources_WAR_lawnet3baseportlet_docId=/{extracted_content}"
+                    if is_valid_case_url(next_url):
+                        case_to_json(next_url, output_directory)
+
+        else:
+            log_msg = f"Failed to fetch the web page '{url}'. Status code: {response.status_code}"
+            sns.publish(
+                TopicArn=SNS_ARN,
+                Message=log_msg,
+                Subject=log_subject
+            )
+
+    except Exception as e:
+        log_msg = f"An error occurred: {str(e)}"
+        sns.publish(
+                TopicArn=SNS_ARN,
+                Message=log_msg,
+                Subject=log_subject
+            )
 
 def extract_case_name(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -135,12 +160,13 @@ def extract_case_name(html_content):
         return case_title
     return ""
 
-def extract_citation(url):
-    # Extract the case ID from the case URL
-    # Customize this function based on the actual URL structure
-    url_parts = url.split('/')
-    citation = url_parts[-1]
-    return citation
+def extract_citation(html_content):
+    soup = BeautifulSoup(html_content, 'html.parser')
+    case_citation_tag = soup.find('span', class_='Citation')
+    if case_citation_tag:
+        case_citation = ' '.join(case_citation_tag.stripped_strings)
+        return case_citation
+    return ""
 
 def extract_case_number(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
@@ -191,7 +217,7 @@ def extract_decision_date(html_content):
         decision_date = case_info.get('Decision Date', '')
         
         return decision_date
-
+    
     #if info table not found, try finding using tag
     decision_date_tag = soup.find('div', class_='Judg-Date-Reserved')
     if decision_date_tag:
@@ -204,9 +230,10 @@ def extract_paragraph_classes(html_content):
     soup = BeautifulSoup(html_content, 'html.parser')
     paragraph_classes = set()
     for tag in soup.find_all(class_=True):
-        for class_name in tag.get('class', []):
-            if any(prefix in class_name for prefix in ['Judg-1', 'Judg-2', 'Judg-3', 'Judge-Quote-','Judg-Quote','Judg-List']):
-                paragraph_classes.add(class_name)
+        if tag.name == 'p':
+            for class_name in tag.get('class', []):
+                if any(prefix in class_name for prefix in ['Judg-1', 'Judg-2', 'Judg-3', 'Judg-Quote','Judge-Quote','Judg-List']):
+                    paragraph_classes.add(class_name)
     paragraph_classes = list(paragraph_classes)
     
     #if a table tag is collected, we have to remove it from the class list, to ensure no stripped tables in paragraph classes
@@ -216,8 +243,7 @@ def extract_paragraph_classes(html_content):
     if class_names:
         for class_name in class_names:
             if class_name in paragraph_classes:
-                paragraph_classes.remove(class_name)
-        
+                paragraph_classes.remove(class_name) 
     return paragraph_classes
 
 def extract_paragraphs_in_order(html_content, paragraph_classes):
@@ -228,6 +254,7 @@ def extract_paragraphs_in_order(html_content, paragraph_classes):
         if any(paragraph_class in tag.get('class', []) for paragraph_class in paragraph_classes):
             #clean text
             paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
+            #remove numbering of para
             while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
                 paragraph_text = paragraph_text[1:]
             #ensure no empty paragraph strings are appended to the list
@@ -292,10 +319,9 @@ def extract_everything_in_order(html_content, header_classes, paragraph_classes,
             paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
             while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
                 paragraph_text = paragraph_text[1:]  
-            #ensure no empty paragraph strings are appended to the list
             if len(paragraph_text)>0:
                 result_list.append(('paragraph', paragraph_text))
-            
+        
         if any(table_tag in tag.get('class', []) for table_tag in table_classes):
             result_list.append(('table',str(tag)))
             
@@ -311,10 +337,9 @@ def extract_paragraphs_and_tables_in_order(html_content, paragraph_classes, tabl
             paragraph_text = re.sub(r'\s+', ' ', tag.get_text(strip=True))
             while len(paragraph_text)>=1 and paragraph_text[0].isdigit():
                 paragraph_text = paragraph_text[1:] 
-            #ensure no empty paragraph strings are appended to the list
-            if len(paragraph_text)>0:
+            if len(paragraph_text)>0: 
                 result_list.append(paragraph_text)
-            
+
         if any(table_tag in tag.get('class', []) for table_tag in table_classes):
             result_list.append(str(tag))
     return result_list    
@@ -372,9 +397,6 @@ def convert_to_md(ordered_list):
 #convert cases to json file
 def case_to_json(case_url):
     try:
-        #extract citation from url
-        citation = extract_citation(case_url)
-        
         # Send an HTTP GET request to the case URL
         response = requests.get(case_url)
 
@@ -385,6 +407,9 @@ def case_to_json(case_url):
 
             # Extract HTML content
             html_content = str(soup)
+            
+            #extract citation from html content
+            citation = extract_citation(html_content)
     
             case_name = extract_case_name(html_content)
             
@@ -490,17 +515,15 @@ def lambda_handler(event, context):
         - Upload json to S3 bucket
         - Run pipeline on case and update CSV with extracted information
     """
-    page = 1
-    url = f"https://www.elitigation.sg/gd/Home/Index?filter=SUPCT&yearOfDecision=All&sortBy=DateOfDecision&currentPage={page}&sortAscending=False&searchPhrase=%22division%20of%20matrimonial%20assets%22&verbose=False"
+    url = 'https://www.lawnet.sg/lawnet/web/lawnet/free-resources?p_p_id=freeresources_WAR_lawnet3baseportlet&p_p_lifecycle=0&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_pos=2&p_p_col_count=3&_freeresources_WAR_lawnet3baseportlet_action=juvenile'
+    
+    latest_case_citation_from_csv = get_latest_case_citation_from_csv()
     
     response = requests.get(url)
     soup = BeautifulSoup(response.text, 'html.parser')
-    
-    latest_case_citation_from_csv = get_latest_case_citation_from_csv()
+    latest_case_citation_from_lawnet = get_latest_case_from_lawnet(soup=soup)
 
-    latest_case_citation_from_url = get_latest_case_citation_from_url(soup=soup)
-    
-    if latest_case_citation_from_csv == latest_case_citation_from_url:
+    if latest_case_citation_from_csv == latest_case_citation_from_lawnet:
         log_msg = "There are no new judgments today. No cases have been uploaded to LAB spreadsheet."
         sns.publish(
             TopicArn=SNS_ARN,
@@ -509,10 +532,5 @@ def lambda_handler(event, context):
         )
 
     else:
-        # test by putting a random latest case here
-        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv="2024_SGHCF_15")
-        # judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv=latest_case_citation_from_csv)
-
-        # Write new judgments to S3 bucket and use new lambda function to process the judgment
-        for judgment_url in judgment_urls_to_scrape:
-            case_to_json(judgment_url)
+        #! scrape cases and run pipeline
+        judgment_urls_to_scrape = 

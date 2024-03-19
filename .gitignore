@@ -3,6 +3,9 @@ my_deployment_package.zip
 
 # Data (do not commit judgments)
 judgments
+*.json
+*.csv
+*.xlsx
 
 # MacOS hidden files
 .DS_Store
