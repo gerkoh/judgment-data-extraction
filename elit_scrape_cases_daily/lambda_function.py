@@ -20,6 +20,8 @@ todo on aws lambda function:
 - add AWS layer to lambda function - pandas
 - add openai layer https://medium.com/@aalc928/2024-guide-to-deploying-openai-in-aws-lambda-the-essential-checklist-f58cd24e0c36
     - pip install openai -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
+    - zip -r openai-package.zip openai
+    - pip install tabulate -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
     - zip -r tabulate-package.zip python
 - increase max memory to 512GB
 - set environment variables in aws config
@@ -31,7 +33,7 @@ s3 = boto3.client('s3')
 sns = boto3.client('sns')
 
 S3_BUCKET = os.environ.get('JUDGMENT_SCRAPER_S3_BUCKET')
-JUDGMENT_CSV = os.environ.get('JUDGMENT_CSV')
+JUDGMENT_CSV = os.environ.get('ELIT_JUDGMENT_CSV')
 SNS_ARN = os.environ.get('SNS_ARN')
 
 # logger = logging.getLogger()
@@ -369,7 +371,6 @@ def convert_to_md(ordered_list):
     md_output = str(md_output)
     return md_output.encode('utf-8')
 
-#convert cases to json file
 def case_to_json(case_url):
     try:
         #extract citation from url
@@ -445,12 +446,12 @@ def case_to_json(case_url):
             csv_response_status = csv_response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             
             if csv_response_status == 200:
-                csv_data = pd.read_csv(csv_response.get("Body"))
-                missing_values_count = len(csv_data.columns) - len(to_insert)
-                new_data_extended = to_insert + [""] * missing_values_count
-                new_df = pd.DataFrame([new_data_extended], columns=csv_data.columns)
-                csv_data = pd.concat([csv_data, new_df], ignore_index=True)
-                s3.put_object(Bucket=S3_BUCKET, Key=JUDGMENT_CSV, Body=csv_data.to_csv(encoding='utf-8'))
+                csv_data = pd.read_csv(csv_response.get("Body"), index_col=False)
+                # missing_values_count = len(csv_data.columns) - len(to_insert)
+                # new_data_extended = to_insert + [""] * missing_values_count
+                new_df = pd.DataFrame([to_insert], columns=csv_data.columns)
+                csv_data = pd.concat([csv_data, new_df], ignore_index=True).to_csv(encoding='utf-8', index=False)
+                s3.put_object(Bucket=S3_BUCKET, Key=JUDGMENT_CSV, Body=csv_data)
                 log_msg += "Successfully updated the CSV file with the extracted information."
             else:
                 log_msg += f"Failed to update the CSV file with the extracted information, error: {csv_response_status}."
@@ -510,7 +511,7 @@ def lambda_handler(event, context):
 
     else:
         # test by putting a random latest case here
-        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv="2024_SGHCF_15")
+        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv="2024_SGHCF_15") # for testing
         # judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv=latest_case_citation_from_csv)
 
         # Write new judgments to S3 bucket and use new lambda function to process the judgment

@@ -20,6 +20,8 @@ todo on aws lambda function:
 - add AWS layer to lambda function - pandas
 - add openai layer https://medium.com/@aalc928/2024-guide-to-deploying-openai-in-aws-lambda-the-essential-checklist-f58cd24e0c36
     - pip install openai -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
+    - zip -r openai-package.zip openai
+    - pip install tabulate -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
     - zip -r tabulate-package.zip python
 - increase max memory to 512GB
 - set environment variables in aws config
@@ -31,7 +33,7 @@ s3 = boto3.client('s3')
 sns = boto3.client('sns')
 
 S3_BUCKET = os.environ.get('JUDGMENT_SCRAPER_S3_BUCKET')
-JUDGMENT_CSV = os.environ.get('JUDGMENT_CSV')
+JUDGMENT_CSV = os.environ.get('LAWNET_JUDGMENT_CSV')
 SNS_ARN = os.environ.get('SNS_ARN')
 
 # logger = logging.getLogger()
@@ -108,11 +110,7 @@ def get_latest_case_from_lawnet(soup):
     formatted_citation = citation_and_casename.split(" - ")[1].strip().replace(" ", "_").replace("[","").replace("]","")
     return formatted_citation
 
-def is_valid_case_url(url):
-    # Check if the URL is a case URL based on the pattern
-    return "https://www.lawnet.sg/lawnet/web/lawnet/free-resources?p_p_id=freeresources_WAR_lawnet3baseportlet&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_pos=2&p_p_col_count=3&_freeresources_WAR_lawnet3baseportlet_action=openContentPage&_freeresources_WAR_lawnet3baseportlet_docId=" in url
-
-def extract_cases_from_page(url, output_directory):
+def get_judgment_urls_to_scrape(url, latest_case_citation_from_csv):
     try:
         # Send an HTTP GET request to the URL
         response = requests.get(url)
@@ -122,17 +120,25 @@ def extract_cases_from_page(url, output_directory):
             # Parse the HTML content of the page using BeautifulSoup
             soup = BeautifulSoup(response.text, 'html.parser')
             
+            # list contains tuples (case citation, url)
+            all_citations_and_urls_on_page = []
+            base = "https://www.lawnet.sg/lawnet/web/lawnet/free-resources?p_p_id=freeresources_WAR_lawnet3baseportlet&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_pos=2&p_p_col_count=3&_freeresources_WAR_lawnet3baseportlet_action=openContentPage&_freeresources_WAR_lawnet3baseportlet_docId="
+            
             # Find all links on the page
             for link in soup.find_all('a', href=True):
-                next_url_suffix = urljoin(url, link['href'])
-                #takes '/Judgment/30964-SSP.xml' from javascript:viewContent('/Judgment/30964-SSP.xml')
-                match = re.search(r"'/([^']+)'", next_url_suffix)
-                if match:
-                    extracted_content = match.group(1)
-                # Check if the link is a valid case URL
-                    next_url = f"https://www.lawnet.sg/lawnet/web/lawnet/free-resources?p_p_id=freeresources_WAR_lawnet3baseportlet&p_p_lifecycle=1&p_p_state=normal&p_p_mode=view&p_p_col_id=column-1&p_p_col_pos=2&p_p_col_count=3&_freeresources_WAR_lawnet3baseportlet_action=openContentPage&_freeresources_WAR_lawnet3baseportlet_docId=/{extracted_content}"
-                    if is_valid_case_url(next_url):
-                        case_to_json(next_url, output_directory)
+                if link['href'].startswith("javascript:viewContent('"):
+                    case_url = base + link['href'].replace("javascript:viewContent('", "").replace("'", "")
+                    citation = link.text.split(" - ")[1].strip().replace(" ", "_").replace("[","").replace("]","")
+                    all_citations_and_urls_on_page.append((citation, case_url))
+            
+            urls_to_scrape = []
+            for tup in all_citations_and_urls_on_page:
+                citation = tup[0]
+                link = tup[1]
+                if latest_case_citation_from_csv in citation:
+                    break
+                urls_to_scrape.append(link)
+            return urls_to_scrape
 
         else:
             log_msg = f"Failed to fetch the web page '{url}'. Status code: {response.status_code}"
@@ -394,7 +400,6 @@ def convert_to_md(ordered_list):
     md_output = str(md_output)
     return md_output.encode('utf-8')
 
-#convert cases to json file
 def case_to_json(case_url):
     try:
         # Send an HTTP GET request to the case URL
@@ -470,12 +475,12 @@ def case_to_json(case_url):
             csv_response_status = csv_response.get("ResponseMetadata", {}).get("HTTPStatusCode")
             
             if csv_response_status == 200:
-                csv_data = pd.read_csv(csv_response.get("Body"))
-                missing_values_count = len(csv_data.columns) - len(to_insert)
-                new_data_extended = to_insert + [""] * missing_values_count
-                new_df = pd.DataFrame([new_data_extended], columns=csv_data.columns)
-                csv_data = pd.concat([csv_data, new_df], ignore_index=True)
-                s3.put_object(Bucket=S3_BUCKET, Key=JUDGMENT_CSV, Body=csv_data.to_csv(encoding='utf-8'))
+                csv_data = pd.read_csv(csv_response.get("Body"), index_col=False)
+                # missing_values_count = len(csv_data.columns) - len(to_insert)
+                # new_data_extended = to_insert + [""] * missing_values_count
+                new_df = pd.DataFrame([to_insert], columns=csv_data.columns)
+                csv_data = pd.concat([csv_data, new_df], ignore_index=True).to_csv(encoding='utf-8', index=False)
+                s3.put_object(Bucket=S3_BUCKET, Key=JUDGMENT_CSV, Body=csv_data)
                 log_msg += "Successfully updated the CSV file with the extracted information."
             else:
                 log_msg += f"Failed to update the CSV file with the extracted information, error: {csv_response_status}."
@@ -533,4 +538,9 @@ def lambda_handler(event, context):
 
     else:
         #! scrape cases and run pipeline
-        judgment_urls_to_scrape = 
+        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, latest_case_citation_from_csv='2024_SGFC_9') # for testing
+        # judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, latest_case_citation_from_csv=latest_case_citation_from_lawnet)
+        
+        # Write new judgments to S3 bucket and use new lambda function to process the judgment
+        for judgement_url in judgment_urls_to_scrape:
+            case_to_json(judgement_url)
