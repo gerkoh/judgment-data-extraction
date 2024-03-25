@@ -3,6 +3,9 @@ import streamlit as st
 from datetime import datetime
 import numpy as np
 
+# streamlit_app.py integration for aws
+from st_files_connection import FilesConnection
+
 
 #cleaning the dataframe first
 #cleaning date of judgmenets:
@@ -41,7 +44,7 @@ def convert_to_float_years(duration_str):
                 years = float(parts[i - 1])
             elif part == 'months' or part == 'month'or part == 'Months' or part == 'Month':
                 months = float(parts[i - 1])    
-        fraction_of_year = round(months / 12, 5)
+        fraction_of_year = round(months / 12, 2)
         total_years = years + fraction_of_year
         
         # Check if the duration is still zero after parsing
@@ -179,8 +182,13 @@ def run_me(df):
     return df
 
 #import the csv into a pandas df and clean it up
-file = 'streamlit/gold_standard_elit.csv'
-df = pd.read_csv(file)
+# Create connection object and retrieve file contents.
+# Specify input format is a csv and to cache the result for 600 seconds.
+conn = st.connection('s3', type=FilesConnection)
+file = conn.read("sg-family-law-judgments/gold_standard_elit.csv", input_format="csv", ttl=600)
+
+
+#remove index row if it exists
 if df.columns[0] == 'Unnamed: 0':
     df = df.drop(columns=df.columns[0])
 df = run_me(df)
