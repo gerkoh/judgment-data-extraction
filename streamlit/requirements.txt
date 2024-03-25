@@ -1,4 +1,4 @@
 # requirements.txt
-s3fs==x.x.x
+s3fs==2024.3.1
 st-files-connection
 
