@@ -4,7 +4,7 @@ from datetime import datetime
 import numpy as np
 
 # streamlit_app.py integration for aws
-from st_files_connection import FilesConnection
+# from st_files_connection import FilesConnection
 
 
 #cleaning the dataframe first
@@ -184,9 +184,12 @@ def run_me(df):
 #import the csv into a pandas df and clean it up
 # Create connection object and retrieve file contents.
 # Specify input format is a csv and to cache the result for 600 seconds.
-conn = st.connection('s3', type=FilesConnection)
-df = conn.read("sg-family-law-judgments/gold_standard_elit.csv", input_format="csv", ttl=600)
+# conn = st.connection('s3', type=FilesConnection)
+# df = conn.read("sg-family-law-judgments/gold_standard_elit.csv", input_format="csv", ttl=600)
+
 #remove index row if it exists
+file = 'streamlit/gold_standard_elit.csv'
+df = pd.read_csv(file)
 if df.columns[0] == 'Unnamed: 0':
     df = df.drop(columns=df.columns[0])
 df = run_me(df)
@@ -206,17 +209,17 @@ st.subheader('Filter cases by categories below')
 loms_ij = df['Length of marriage till IJ (include separation period) in years'].unique().tolist()
 loms_ij = [float(item) for item in loms_ij]
 lom_ij  = st.slider('Length of marriage till IJ (include separation period) in years:',
-                        min_value= 0.00,
-                        max_value= max(loms_ij),
-                        value=(0.00, max(loms_ij)))
+                        min_value= 0,
+                        max_value= 100,
+                        value=(0, 100))
 
 # Number of children
 num_children = df['Number of children'].unique().tolist()
 num_children = [float(item) for item in num_children]
 child = st.slider('Number of children:',
-                        min_value= 0.00,
-                        max_value= max(num_children),
-                        value=(0.00, max(num_children)))
+                        min_value= 0,
+                        max_value= 30,
+                        value=(0, 30))
 
 
 # Single or dual income marriage
@@ -229,9 +232,9 @@ marriage_type = st.multiselect('Income Type:',
 final_ratios = df['Final ratio (Wife:Husband, post-adjustments)'].unique().tolist()
 final_ratios = [float(item) for item in final_ratios]
 final_ratio = st.slider('Final Ratio of Contributions, Wife:Husband:',
-                        min_value= 0.00,
-                        max_value= 100.00,
-                        value=(0.00,100.00))
+                        min_value= 0,
+                        max_value= 100,
+                        value=(0,100))
 
     
 mask = (
