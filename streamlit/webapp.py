@@ -163,7 +163,7 @@ def run_me(df):
     for i in range(len(current_column_names)):
         df = df.rename(columns={current_column_names[i]: new_column_names[i]})
     # Drop the 3rd & 4th last columns which are empty
-    df = df.drop(df.columns[-4:-3], axis=1)
+    df = df.drop(df.columns[-5:], axis=1)
     
     #convert dates to string just in case not all are string
     df['Date of Judgments'] = df['Date of Judgments'].astype(str)    
@@ -179,8 +179,10 @@ def run_me(df):
     return df
 
 #import the csv into a pandas df and clean it up
-file = 'streamlit/Structure_of_Judgment_for_Division_of_Matrimonial_Assets_Existing.csv'
+file = 'streamlit/gold_standard_elit.csv'
 df = pd.read_csv(file)
+if df.columns[0] == 'Unnamed: 0':
+    df = df.drop(columns=df.columns[0])
 df = run_me(df)
 
 ########
