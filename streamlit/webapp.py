@@ -136,6 +136,25 @@ def remove_invalid_data(df):
     
     return cleaned_df
 
+def add_url_to_df(df):
+    # Define the position and name for the new column
+    position = 2
+    new_column_name = 'URL'
+    new_column_data = []
+    base_url = 'https://www.elitigation.sg/gd/s/'
+
+    # Iterate over the 'Citation' column to construct the URL
+    for i in df['Citation']:
+        parts = i.split(' ', 2)
+        stripped_part_0 = parts[0].strip('[]')
+        url = f"{base_url}{stripped_part_0}_{parts[1]}_{parts[2]}"
+        new_column_data.append(url)
+
+    df.insert(position, new_column_name, new_column_data)
+    return df
+    
+    
+
 def run_me(df):
     #rename all the columns to the appropriate names if they are not already
     current_column_names = df.columns.tolist()
@@ -177,8 +196,9 @@ def run_me(df):
     df['Single or Dual Income Marriage'] = df['Single or Dual Income Marriage'].apply(clean_single_or_dual_income_marriage)
     df["Final ratio (Wife:Husband, post-adjustments)"] = df["Final ratio (Wife:Husband, post-adjustments)"].apply(clean_final_ratio)
     
-    df=remove_invalid_data(df)
     
+    df=remove_invalid_data(df)
+    df = add_url_to_df(df)
     return df
 
 #import the csv into a pandas df and clean it up
@@ -223,10 +243,10 @@ child = st.slider('Number of children:',
 
 
 # Single or dual income marriage
-marriage_types = df['Single or Dual Income Marriage'].unique().tolist()
+marriage_types = sorted(df['Single or Dual Income Marriage'].unique().tolist())
 marriage_type = st.multiselect('Income Type:',
                                     marriage_types,
-                                    default=marriage_types[0:2])
+                                    default=marriage_types)
 
 # Final Ratio
 final_ratios = df['Final ratio (Wife:Husband, post-adjustments)'].unique().tolist()
@@ -247,4 +267,12 @@ mask = (
 
 number_of_result = df[mask].shape[0]
 st.markdown(f'*Available Results: {number_of_result}*')
-st.dataframe(df[mask])
+
+st.data_editor(
+    df[mask],
+    column_config={
+        "URL": st.column_config.LinkColumn("URL")
+    },
+    hide_index=True,
+    use_container_width=True
+)
