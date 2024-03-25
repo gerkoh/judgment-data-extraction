@@ -185,9 +185,7 @@ def run_me(df):
 # Create connection object and retrieve file contents.
 # Specify input format is a csv and to cache the result for 600 seconds.
 conn = st.connection('s3', type=FilesConnection)
-file = conn.read("sg-family-law-judgments/gold_standard_elit.csv", input_format="csv", ttl=600)
-
-
+df = conn.read("sg-family-law-judgments/gold_standard_elit.csv", input_format="csv", ttl=600)
 #remove index row if it exists
 if df.columns[0] == 'Unnamed: 0':
     df = df.drop(columns=df.columns[0])
