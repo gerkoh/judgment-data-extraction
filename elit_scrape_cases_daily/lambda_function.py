@@ -21,11 +21,19 @@ todo on aws lambda function:
 - add openai layer https://medium.com/@aalc928/2024-guide-to-deploying-openai-in-aws-lambda-the-essential-checklist-f58cd24e0c36
     - pip install openai -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
     - zip -r openai-package.zip openai
+- add tabulate layer
     - pip install tabulate -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
     - zip -r tabulate-package.zip python
-- increase max memory to 512GB
+- increase max memory to 512MB
 - set environment variables in aws config
 - check permissions given to function
+- upload *elit* LAB data (csv) file to s3 bucket
+    - the last row of the csv file should contain one of the latest cases on elit to kickstart automation
+- set environment variables in aws config (below are the keys):
+    - JUDGMENT_SCRAPER_S3_BUCKET
+    - ELIT_JUDGMENT_CSV
+    - SNS_ARN
+    - OPENAI_API_KEY
 """
 
 # Create S3 Client
@@ -511,7 +519,7 @@ def lambda_handler(event, context):
 
     else:
         # test by putting a random latest case here
-        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv="2024_SGHCF_15") # for testing
+        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv="2024_SGHCR_5") # enter recent case for testing
         # judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, soup=soup, latest_case_citation_from_csv=latest_case_citation_from_csv)
 
         # Write new judgments to S3 bucket and use new lambda function to process the judgment

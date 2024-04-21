@@ -21,11 +21,19 @@ todo on aws lambda function:
 - add openai layer https://medium.com/@aalc928/2024-guide-to-deploying-openai-in-aws-lambda-the-essential-checklist-f58cd24e0c36
     - pip install openai -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
     - zip -r openai-package.zip openai
+- add tabulate layer
     - pip install tabulate -t . --only-binary=:all: --upgrade --platform manylinux2014_x86_64
     - zip -r tabulate-package.zip python
-- increase max memory to 512GB
+- increase max memory to 512MB
 - set environment variables in aws config
 - check permissions given to function
+- upload *lawnet* LAB data (csv) file to s3 bucket
+    - the last row of the csv file should contain one of the latest cases on lawnet to kickstart automation
+- set environment variables in aws config (below are the keys):
+    - JUDGMENT_SCRAPER_S3_BUCKET
+    - LAWNET_JUDGMENT_CSV
+    - SNS_ARN
+    - OPENAI_API_KEY
 """
 
 # Create S3 Client
@@ -171,7 +179,7 @@ def extract_citation(html_content):
     case_citation_tag = soup.find('span', class_='Citation')
     if case_citation_tag:
         case_citation = ' '.join(case_citation_tag.stripped_strings)
-        return case_citation
+        return case_citation.replace("[", "").replace("]", "").replace(" ", "_")
     return ""
 
 def extract_case_number(html_content):
@@ -427,7 +435,7 @@ def case_to_json(case_url):
             paragraphs = extract_paragraphs_in_order(html_content, paragraph_classes)
             
             #extract headers in order
-            header_classes =extract_header_classes(html_content)
+            header_classes = extract_header_classes(html_content)
             headers = extract_headers_in_order(html_content, header_classes)
             
             #extracts tables in order
@@ -538,9 +546,10 @@ def lambda_handler(event, context):
 
     else:
         #! scrape cases and run pipeline
-        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, latest_case_citation_from_csv='2024_SGFC_9') # for testing
+        judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, latest_case_citation_from_csv='2024_SGFC_9') # enter recent case for testing
         # judgment_urls_to_scrape = get_judgment_urls_to_scrape(url=url, latest_case_citation_from_csv=latest_case_citation_from_lawnet)
         
         # Write new judgments to S3 bucket and use new lambda function to process the judgment
-        for judgement_url in judgment_urls_to_scrape:
-            case_to_json(judgement_url)
+        for judgment_url in judgment_urls_to_scrape:
+            judgment_url = judgment_url[:-1]
+            case_to_json(judgment_url)
